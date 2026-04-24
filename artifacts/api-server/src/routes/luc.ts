@@ -244,12 +244,13 @@ router.post("/luc/visits", requireAnyCaller, async (req, res) => {
 router.patch("/luc/visits/:clientId/approval", requireAdminCaller, async (req, res) => {
   const cid = String(req.params["clientId"] ?? "").trim();
   const approved = String(req.body?.approved ?? "").trim();
+  const approvalRemark = String(req.body?.remarks ?? req.body?.approvalRemark ?? "").trim();
   if (!["", "approved", "rejected"].includes(approved)) {
     return res.status(400).json({ ok: false, error: "Invalid approval value" });
   }
   const updated = await db
     .update(lucVisitsTable)
-    .set({ approved, updatedAt: Date.now() })
+    .set({ approved, approvalRemark, updatedAt: Date.now() })
     .where(eq(lucVisitsTable.clientId, cid))
     .returning();
   if (!updated[0]) return res.status(404).json({ ok: false, error: "Not found" });
@@ -296,6 +297,8 @@ router.get("/luc/all-data", requireAnyCaller, async (_req, res) => {
       photos: v?.photos ?? [],
       status: v ? v.status : "pending",
       approved: v?.approved ?? "",
+      approvalRemark: v?.approvalRemark ?? "",
+      submittedByName: v?.submittedByName ?? "",
     })),
   });
 });

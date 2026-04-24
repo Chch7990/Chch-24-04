@@ -16,6 +16,8 @@ export type LucDataRow = {
   photos: string[];
   status: "pending" | "done";
   approved: "" | "approved" | "rejected";
+  approvalRemark: string;
+  submittedByName: string;
 };
 
 export type LucClient = {

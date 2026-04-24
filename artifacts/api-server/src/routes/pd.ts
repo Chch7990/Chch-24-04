@@ -23,7 +23,26 @@ router.post("/auth/logout", (_req, res) => {
 
 router.get("/pd/master-clients", requireAnyCaller, async (_req, res) => {
   const rows = await db.select().from(pdMasterClientsTable).orderBy(desc(pdMasterClientsTable.id));
-  res.json(rows.map((r) => ({ id: r.id, clientId: r.clientId, ...r.data })));
+  const pick = (d: Record<string, unknown>, keys: string[]): string => {
+    for (const k of keys) {
+      const v = d[k];
+      if (v != null && String(v).trim() !== "") return String(v).trim();
+    }
+    return "";
+  };
+  res.json(
+    rows.map((r) => {
+      const d = (r.data ?? {}) as Record<string, unknown>;
+      return {
+        id: r.id,
+        clientId: r.clientId,
+        clientName: pick(d, ["Client Name", "ClientName", "client_name", "clientName", "Name", "NAME"]),
+        branch: pick(d, ["Branch", "Branch Name", "branch", "BRANCH"]),
+        state: pick(d, ["State", "state", "STATE"]),
+        ...d,
+      };
+    }),
+  );
 });
 
 router.post("/pd/master-clients/bulk", requireAdminCaller, async (req, res) => {

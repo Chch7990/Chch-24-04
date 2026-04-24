@@ -226,6 +226,9 @@ export type PdApplication = {
 export type PdMasterClient = {
   id: number;
   clientId: string;
+  clientName: string;
+  branch: string;
+  state: string;
   [k: string]: unknown;
 };
 

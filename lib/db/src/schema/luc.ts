@@ -40,6 +40,7 @@ export const lucVisitsTable = pgTable(
     photos: jsonb("photos").$type<string[]>().notNull().default([]), // base64 data URLs
     status: text("status").notNull().default("done"), // 'pending' | 'done'
     approved: text("approved").notNull().default(""), // '' | 'approved' | 'rejected'
+    approvalRemark: text("approval_remark").notNull().default(""), // admin remarks for approve/reject
     submittedByUid: text("submitted_by_uid").notNull().default(""),
     submittedByName: text("submitted_by_name").notNull().default(""),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),

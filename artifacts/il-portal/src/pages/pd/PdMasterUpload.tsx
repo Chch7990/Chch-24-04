@@ -157,12 +157,22 @@ export default function PdMasterUpload() {
               </tr>
             </thead>
             <tbody>
+              {list.isLoading && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center text-slate-400">Loading…</td>
+                </tr>
+              )}
+              {!list.isLoading && masterRows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center text-slate-400">No clients yet</td>
+                </tr>
+              )}
               {masterRows.slice(0, 200).map((r) => (
                 <tr key={r.id} className="border-t border-slate-100">
                   <td className="px-2 py-1.5 font-mono">{r.clientId}</td>
-                  <td className="px-2 py-1.5">{String(r["Client Name"] ?? r["Name"] ?? r["clientName"] ?? "")}</td>
-                  <td className="px-2 py-1.5">{String(r["Branch"] ?? r["Branch Name"] ?? r["branch"] ?? "")}</td>
-                  <td className="px-2 py-1.5">{String(r["State"] ?? r["state"] ?? "")}</td>
+                  <td className="px-2 py-1.5">{r.clientName || "—"}</td>
+                  <td className="px-2 py-1.5">{r.branch || "—"}</td>
+                  <td className="px-2 py-1.5">{r.state || "—"}</td>
                 </tr>
               ))}
             </tbody>
