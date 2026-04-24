@@ -24,7 +24,7 @@ router.post("/auth/logout", (_req, res) => {
 // Case- and whitespace-insensitive key lookup so Excel/CSV header variants
 // like "Client ID", "Client Id", "client_id", "CLIENTID" all match.
 function normKey(k: string): string {
-  return String(k).toLowerCase().replace(/[\s_\-./]+/g, "");
+  return String(k).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 function pickField(row: Record<string, unknown>, candidates: string[]): string {
   const map: Record<string, unknown> = {};
@@ -36,8 +36,17 @@ function pickField(row: Record<string, unknown>, candidates: string[]): string {
   return "";
 }
 
-const CLIENT_ID_KEYS = ["Client ID", "ClientID", "Client Id", "client_id", "clientId", "CID", "MFI Client ID"];
-const CLIENT_NAME_KEYS = ["Client Name", "ClientName", "client_name", "clientName", "Name", "Client NAME", "Customer Name"];
+// Primary Client ID — broad list of header variants. "IL Client ID" is
+// the canonical column in the IL master template.
+const CLIENT_ID_KEYS = [
+  "IL Client ID", "ILClientID", "IL_Client_ID",
+  "Client ID", "ClientID", "Client Id", "client_id", "clientId",
+  "CID", "Customer ID", "Customer Id",
+];
+const CLIENT_NAME_KEYS = [
+  "Applicant Name", "Client Name", "ClientName", "client_name", "clientName",
+  "Name", "Customer Name",
+];
 const BRANCH_KEYS = ["Branch", "Branch Name", "branch", "BranchName"];
 const STATE_KEYS = ["State", "state"];
 

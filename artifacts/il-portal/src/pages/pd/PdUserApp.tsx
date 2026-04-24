@@ -97,8 +97,9 @@ export default function PdUserApp({ session }: { session: SessionUser }) {
         });
         return;
       }
-      // Case- and whitespace-insensitive field lookup
-      const normKey = (k: string) => k.toLowerCase().replace(/[\s_\-./]+/g, "");
+      // Case- and punctuation-insensitive field lookup so headers like
+      // "Curr. Address :" or "Permenant Add :" still map cleanly.
+      const normKey = (k: string) => k.toLowerCase().replace(/[^a-z0-9]+/g, "");
       const fieldMap: Record<string, unknown> = {};
       for (const k of Object.keys(found)) fieldMap[normKey(k)] = found[k];
       const get = (...keys: string[]): string => {
@@ -110,13 +111,13 @@ export default function PdUserApp({ session }: { session: SessionUser }) {
       };
       setPayload((p) => ({
         ...p,
-        ilClientId: get("MFI Client ID", "ilClientId", "MFI ID"),
+        ilClientId: get("Client ID -MFI", "MFI Client ID", "Client ID MFI", "ilClientId", "MFI ID"),
         loanId: get("Loan ID", "loanId", "Loan ID (IL)"),
-        name: get("Client Name", "Name", "name", "clientName", "Client NAME"),
-        address: get("Address", "address", "Current Address"),
-        permAddress: get("Permanent Address", "permAddress"),
-        state: get("State", "state"),
-        branch: get("Branch", "branch", "Branch Name"),
+        name: get("Applicant Name", "Client Name", "Name", "clientName"),
+        address: get("Curr. Address :", "Curr Address", "Current Address", "Address", "Curr. Address"),
+        permAddress: get("Permenant Add :", "Permanent Address", "Perm Address", "Permenant Add"),
+        state: get("State"),
+        branch: get("Branch", "Branch Name"),
       }));
       // Pull other loans for this client and pre-fill rows
       try {
@@ -126,14 +127,23 @@ export default function PdUserApp({ session }: { session: SessionUser }) {
         if (loans.length > 0) {
           const next = [...payload.otherLoans];
           loans.slice(0, 10).forEach((l, i) => {
+            const lmap: Record<string, unknown> = {};
+            for (const k of Object.keys(l)) lmap[normKey(k)] = l[k];
+            const lget = (...keys: string[]): string => {
+              for (const k of keys) {
+                const v = lmap[normKey(k)];
+                if (v != null && String(v).trim() !== "") return String(v).trim();
+              }
+              return "";
+            };
             next[i] = {
-              bank: String(l["Bank"] ?? l["Bank Name"] ?? l["bank"] ?? ""),
-              loanType: String(l["Loan Type"] ?? l["loanType"] ?? ""),
-              loanAmount: String(l["Loan Amount"] ?? l["loanAmount"] ?? ""),
-              outstanding: String(l["Outstanding"] ?? l["outstanding"] ?? ""),
-              emi: String(l["EMI"] ?? l["emi"] ?? ""),
-              tenureLeft: String(l["Tenure Left"] ?? l["tenureLeft"] ?? ""),
-              remarks: String(l["Remarks"] ?? l["remarks"] ?? ""),
+              bank: lget("Bank / MFI / NBFC Name", "Bank Name", "Bank"),
+              loanType: lget("Loan Type"),
+              loanAmount: lget("Loan Amount (₹)", "Loan Amount"),
+              outstanding: lget("Outstanding (₹)", "Outstanding"),
+              emi: lget("EMI (₹/month)", "EMI"),
+              tenureLeft: lget("Tenure Left"),
+              remarks: lget("Remarks"),
             };
           });
           setPayload((p) => ({ ...p, otherLoans: next }));
