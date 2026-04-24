@@ -5,7 +5,7 @@ import { Logo, Shell } from "../components/Logo";
 import { showToast } from "../components/Toast";
 import { apiGet, apiPost, apiDelete } from "../lib/api";
 import { loadSession, clearSession } from "../lib/session";
-import { parseCsv, downloadCsv } from "../lib/csv";
+import { parseTabularFile, downloadCsv, TABULAR_FILE_ACCEPT } from "../lib/csv";
 
 type ManagedUser = {
   uid: string;
@@ -76,13 +76,16 @@ export default function UserMgmtPage() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    const text = await f.text();
-    const rows = parseCsv(text);
-    if (rows.length === 0) {
-      showToast("No rows found", "err");
-      return;
+    try {
+      const rows = await parseTabularFile(f);
+      if (rows.length === 0) {
+        showToast("No rows found", "err");
+        return;
+      }
+      bulkMut.mutate({ users: rows, mode: bulkMode });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to read file", "err");
     }
-    bulkMut.mutate({ users: rows, mode: bulkMode });
   }
 
   function downloadTemplate() {
@@ -198,7 +201,7 @@ export default function UserMgmtPage() {
             <label className="block">
               <input
                 type="file"
-                accept=".csv"
+                accept={TABULAR_FILE_ACCEPT}
                 onChange={handleBulkUpload}
                 disabled={bulkMut.isPending}
                 className="block w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#1a3c5e] file:text-white hover:file:bg-[#15324f] disabled:opacity-60"

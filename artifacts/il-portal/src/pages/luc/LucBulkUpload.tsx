@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../lib/api";
-import { parseCsv, downloadCsv } from "../../lib/csv";
+import { parseTabularFile, downloadCsv, TABULAR_FILE_ACCEPT } from "../../lib/csv";
 import { showToast } from "../../components/Toast";
 
 export default function LucBulkUpload() {
@@ -33,9 +33,16 @@ export default function LucBulkUpload() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    const text = await f.text();
-    const rows = parseCsv(text);
-    setPreview(rows);
+    try {
+      const rows = await parseTabularFile(f);
+      if (rows.length === 0) {
+        showToast("No rows found", "err");
+        return;
+      }
+      setPreview(rows);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to read file", "err");
+    }
   }
 
   function downloadTemplate() {
@@ -114,7 +121,7 @@ export default function LucBulkUpload() {
         </div>
         <input
           type="file"
-          accept=".csv"
+          accept={TABULAR_FILE_ACCEPT}
           onChange={handleFile}
           className="block w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#0f5132] file:text-white"
         />

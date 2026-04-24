@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../lib/api";
-import { parseCsv, downloadCsv } from "../../lib/csv";
+import { parseTabularFile, downloadCsv, TABULAR_FILE_ACCEPT } from "../../lib/csv";
 import { showToast } from "../../components/Toast";
 
 type Row = { id: number; clientId: string; [k: string]: unknown };
@@ -31,13 +31,16 @@ export default function PdOtherLoansUpload() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    const text = await f.text();
-    const parsed = parseCsv(text);
-    if (parsed.length === 0) {
-      showToast("No rows", "err");
-      return;
+    try {
+      const parsed = await parseTabularFile(f);
+      if (parsed.length === 0) {
+        showToast("No rows", "err");
+        return;
+      }
+      setRows(parsed);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to read file", "err");
     }
-    setRows(parsed);
   }
 
   function downloadTemplate() {
@@ -84,7 +87,7 @@ export default function PdOtherLoansUpload() {
         </div>
         <input
           type="file"
-          accept=".csv"
+          accept={TABULAR_FILE_ACCEPT}
           onChange={onFile}
           className="block w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#1a3c5e] file:text-white"
         />

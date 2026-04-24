@@ -1,3 +1,48 @@
+import * as XLSX from "xlsx";
+
+export const TABULAR_FILE_ACCEPT = ".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+export async function parseTabularFile(
+  file: File,
+): Promise<Record<string, string>[]> {
+  const name = file.name.toLowerCase();
+  const isExcel = name.endsWith(".xlsx") || name.endsWith(".xls");
+
+  if (!isExcel) {
+    const text = await file.text();
+    return parseCsv(text);
+  }
+
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const firstSheet = wb.SheetNames[0];
+  if (!firstSheet) return [];
+  const ws = wb.Sheets[firstSheet];
+  if (!ws) return [];
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, {
+    header: 1,
+    raw: false,
+    defval: "",
+    blankrows: false,
+  });
+  if (aoa.length === 0) return [];
+  const headers = (aoa[0] as unknown[]).map((h) => String(h ?? "").trim());
+  const out: Record<string, string>[] = [];
+  for (let i = 1; i < aoa.length; i++) {
+    const row = aoa[i] as unknown[];
+    const r: Record<string, string> = {};
+    let hasAny = false;
+    headers.forEach((h, j) => {
+      const v = row[j];
+      const s = v == null ? "" : String(v).trim();
+      if (s !== "") hasAny = true;
+      r[h] = s;
+    });
+    if (hasAny) out.push(r);
+  }
+  return out;
+}
+
 function parseCsvRow(line: string): string[] {
   const out: string[] = [];
   let cur = "";
