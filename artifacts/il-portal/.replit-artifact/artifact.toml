@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "IL Digital Portal"
+version = "1.0.0"
+id = "artifacts/il-portal"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19360
+
+[services.development]
+run = "pnpm --filter @workspace/il-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/il-portal", "run", "build" ]
+publicDir = "artifacts/il-portal/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19360"
+BASE_PATH = "/"
