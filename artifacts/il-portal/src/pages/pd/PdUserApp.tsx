@@ -85,16 +85,26 @@ export default function PdUserApp({ session }: { session: SessionUser }) {
     setSearchBusy(true);
     setSearchMsg(null);
     try {
+      const target = payload.clientId.trim();
       const masters = await apiGet<PdMasterClient[]>("/pd/master-clients");
-      const found = masters.find((m) => String(m.clientId) === payload.clientId.trim());
+      const found = masters.find(
+        (m) => String(m.clientId).trim().toLowerCase() === target.toLowerCase(),
+      );
       if (!found) {
-        setSearchMsg({ kind: "err", text: `❌ Client ID ${payload.clientId} not in master roster` });
+        setSearchMsg({
+          kind: "err",
+          text: `❌ Client ID ${payload.clientId} not in master roster (${masters.length} clients loaded)`,
+        });
         return;
       }
+      // Case- and whitespace-insensitive field lookup
+      const normKey = (k: string) => k.toLowerCase().replace(/[\s_\-./]+/g, "");
+      const fieldMap: Record<string, unknown> = {};
+      for (const k of Object.keys(found)) fieldMap[normKey(k)] = found[k];
       const get = (...keys: string[]): string => {
         for (const k of keys) {
-          const v = found[k];
-          if (v != null && String(v).trim() !== "") return String(v);
+          const v = fieldMap[normKey(k)];
+          if (v != null && String(v).trim() !== "") return String(v).trim();
         }
         return "";
       };

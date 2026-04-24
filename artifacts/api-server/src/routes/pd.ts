@@ -21,24 +21,37 @@ router.post("/auth/logout", (_req, res) => {
 
 /* ----------------------------- Master Clients --------------------------- */
 
+// Case- and whitespace-insensitive key lookup so Excel/CSV header variants
+// like "Client ID", "Client Id", "client_id", "CLIENTID" all match.
+function normKey(k: string): string {
+  return String(k).toLowerCase().replace(/[\s_\-./]+/g, "");
+}
+function pickField(row: Record<string, unknown>, candidates: string[]): string {
+  const map: Record<string, unknown> = {};
+  for (const k of Object.keys(row)) map[normKey(k)] = row[k];
+  for (const c of candidates) {
+    const v = map[normKey(c)];
+    if (v != null && String(v).trim() !== "") return String(v).trim();
+  }
+  return "";
+}
+
+const CLIENT_ID_KEYS = ["Client ID", "ClientID", "Client Id", "client_id", "clientId", "CID", "MFI Client ID"];
+const CLIENT_NAME_KEYS = ["Client Name", "ClientName", "client_name", "clientName", "Name", "Client NAME", "Customer Name"];
+const BRANCH_KEYS = ["Branch", "Branch Name", "branch", "BranchName"];
+const STATE_KEYS = ["State", "state"];
+
 router.get("/pd/master-clients", requireAnyCaller, async (_req, res) => {
   const rows = await db.select().from(pdMasterClientsTable).orderBy(desc(pdMasterClientsTable.id));
-  const pick = (d: Record<string, unknown>, keys: string[]): string => {
-    for (const k of keys) {
-      const v = d[k];
-      if (v != null && String(v).trim() !== "") return String(v).trim();
-    }
-    return "";
-  };
   res.json(
     rows.map((r) => {
       const d = (r.data ?? {}) as Record<string, unknown>;
       return {
         id: r.id,
         clientId: r.clientId,
-        clientName: pick(d, ["Client Name", "ClientName", "client_name", "clientName", "Name", "NAME"]),
-        branch: pick(d, ["Branch", "Branch Name", "branch", "BRANCH"]),
-        state: pick(d, ["State", "state", "STATE"]),
+        clientName: pickField(d, CLIENT_NAME_KEYS),
+        branch: pickField(d, BRANCH_KEYS),
+        state: pickField(d, STATE_KEYS),
         ...d,
       };
     }),
@@ -53,27 +66,72 @@ router.post("/pd/master-clients/bulk", requireAdminCaller, async (req, res) => {
     return res.status(400).json({ ok: false, error: "`rows` array required" });
   }
   const replace = req.body?.replace !== false;
+  const now = Date.now();
+  const headersDetected = incoming[0] ? Object.keys(incoming[0]) : [];
+
+  const cleaned: Array<{ clientId: string; data: Record<string, unknown>; createdAt: number }> = [];
+  let skipped = 0;
+  for (const row of incoming) {
+    const cid = pickField(row, CLIENT_ID_KEYS);
+    if (!cid) {
+      skipped++;
+      continue;
+    }
+    cleaned.push({ clientId: cid, data: row, createdAt: now });
+  }
+
+  // Safety: if all rows had missing Client ID, do NOT wipe existing data.
+  if (cleaned.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `No 'Client ID' column found in uploaded file. Detected headers: ${headersDetected.join(", ") || "(none)"}. Acceptable headers: ${CLIENT_ID_KEYS.join(" / ")}.`,
+      headersDetected,
+      skipped,
+    });
+  }
+
   if (replace) {
     await db.delete(pdMasterClientsTable);
   }
-  const now = Date.now();
-  const cleaned = incoming
-    .map((row) => {
-      const cid = String(
-        row["Client ID"] ?? row["client_id"] ?? row["ClientID"] ?? row["clientId"] ?? "",
-      ).trim();
-      return { clientId: cid, data: row, createdAt: now };
-    })
-    .filter((r) => r.clientId);
-  if (cleaned.length) {
-    // Insert in chunks to avoid query limits
-    const chunkSize = 500;
-    for (let i = 0; i < cleaned.length; i += chunkSize) {
-      await db.insert(pdMasterClientsTable).values(cleaned.slice(i, i + chunkSize));
-    }
+  const chunkSize = 500;
+  for (let i = 0; i < cleaned.length; i += chunkSize) {
+    await db.insert(pdMasterClientsTable).values(cleaned.slice(i, i + chunkSize));
   }
   const total = await db.$count(pdMasterClientsTable);
-  res.json({ ok: true, count: total });
+  res.json({ ok: true, count: total, inserted: cleaned.length, skipped, headersDetected });
+});
+
+// Single client lookup with trim + case-insensitive Client ID match.
+router.get("/pd/master-clients/:clientId", requireAnyCaller, async (req, res) => {
+  const cid = String(req.params["clientId"] ?? "").trim();
+  if (!cid) return res.status(400).json({ ok: false, error: "clientId required" });
+  // Try exact, then case-insensitive
+  let rows = await db
+    .select()
+    .from(pdMasterClientsTable)
+    .where(eq(pdMasterClientsTable.clientId, cid))
+    .limit(1);
+  if (!rows[0]) {
+    rows = await db
+      .select()
+      .from(pdMasterClientsTable)
+      .where(sql`lower(${pdMasterClientsTable.clientId}) = lower(${cid})`)
+      .limit(1);
+  }
+  const r = rows[0];
+  if (!r) return res.status(404).json({ ok: false, error: "Not found" });
+  const d = (r.data ?? {}) as Record<string, unknown>;
+  res.json({
+    ok: true,
+    client: {
+      id: r.id,
+      clientId: r.clientId,
+      clientName: pickField(d, CLIENT_NAME_KEYS),
+      branch: pickField(d, BRANCH_KEYS),
+      state: pickField(d, STATE_KEYS),
+      ...d,
+    },
+  });
 });
 
 router.delete("/pd/master-clients/:clientId", requireAdminCaller, async (req, res) => {
@@ -106,26 +164,35 @@ router.post("/pd/other-loans/bulk", requireAdminCaller, async (req, res) => {
     return res.status(400).json({ ok: false, error: "`rows` array required" });
   }
   const replace = req.body?.replace !== false;
+  const now = Date.now();
+  const headersDetected = incoming[0] ? Object.keys(incoming[0]) : [];
+  const cleaned: Array<{ clientId: string; data: Record<string, unknown>; createdAt: number }> = [];
+  let skipped = 0;
+  for (const row of incoming) {
+    const cid = pickField(row, CLIENT_ID_KEYS);
+    if (!cid) {
+      skipped++;
+      continue;
+    }
+    cleaned.push({ clientId: cid, data: row, createdAt: now });
+  }
+  if (cleaned.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `No 'Client ID' column found in uploaded file. Detected headers: ${headersDetected.join(", ") || "(none)"}.`,
+      headersDetected,
+      skipped,
+    });
+  }
   if (replace) {
     await db.delete(pdOtherLoansTable);
   }
-  const now = Date.now();
-  const cleaned = incoming
-    .map((row) => {
-      const cid = String(
-        row["Client ID"] ?? row["client_id"] ?? row["ClientID"] ?? row["clientId"] ?? "",
-      ).trim();
-      return { clientId: cid, data: row, createdAt: now };
-    })
-    .filter((r) => r.clientId);
-  if (cleaned.length) {
-    const chunkSize = 500;
-    for (let i = 0; i < cleaned.length; i += chunkSize) {
-      await db.insert(pdOtherLoansTable).values(cleaned.slice(i, i + chunkSize));
-    }
+  const chunkSize = 500;
+  for (let i = 0; i < cleaned.length; i += chunkSize) {
+    await db.insert(pdOtherLoansTable).values(cleaned.slice(i, i + chunkSize));
   }
   const total = await db.$count(pdOtherLoansTable);
-  res.json({ ok: true, count: total });
+  res.json({ ok: true, count: total, inserted: cleaned.length, skipped, headersDetected });
 });
 
 /* ------------------------------ Draft (per user) ----------------------- */
